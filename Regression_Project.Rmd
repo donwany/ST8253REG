@@ -1,0 +1,489 @@
+---
+title: "Regression Analysis  Project"
+author: "Theophilus Siameh"
+date: "2022-12-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Install 
+```{r}
+install.packages("caret")
+library(readr)
+library(caret)
+library(ggplot2)
+library(modelr)
+library(MASS)
+library(leaps)
+library(car)
+```
+
+## Read in Cancer dataset
+
+```{r}
+cancer_data <- read.csv("cancer_reg.csv", header = T)
+
+cancer_data <- na.omit(cancer_data)
+
+head(cancer_data)
+
+str(cancer_data)
+```
+```{r}
+ggplot(data=cancer_data, aes(cancer_data$TARGET_deathRate)) + 
+  geom_histogram(color="darkblue", fill="lightblue", position="dodge") +
+  labs(title="Histogram for Target Death Rate ", x="deathRate", y="Count")
+
+```
+
+## Create Dummies
+```{r}
+geo = cancer_data[, -1]
+
+cancer_data_withDummies <- fastDummies::dummy_cols(geo, 
+                                            select_columns = c("Geography"),
+                                            remove_first_dummy = T, 
+                                            remove_selected_columns = T)
+
+head(cancer_data_withDummies)
+
+```
+
+```{r}
+plot(cancer_data$avgAnnCount, cancer_data$TARGET_deathRate)
+
+plot(cancer_data$avgDeathsPerYear, cancer_data$TARGET_deathRate)
+
+plot(cancer_data$incidenceRate, cancer_data$TARGET_deathRate)
+
+plot(cancer_data$BirthRate, cancer_data$TARGET_deathRate)
+
+```
+```{r}
+
+
+
+ggplot(cancer_data, aes(x=cancer_data$avgAnnCount, 
+                                       y=cancer_data$TARGET_deathRate, color=cancer_data$Geography)) + 
+  geom_point() + 
+  geom_smooth(method=lm, color="black")+
+  labs(title="AvgAnnCount vs. Target Death Rate",
+       x="AvgAnnCount", y = "Target death rate")+
+  theme_classic()  
+
+
+ggplot(cancer_data, aes(x=cancer_data$avgDeathsPerYear, 
+                                       y=cancer_data$TARGET_deathRate, 
+                          color=cancer_data$Geography)) + 
+  geom_point() + 
+  geom_smooth(method=lm, color="black")+
+  labs(title="AvgAnnCount vs. Target Death Rate",
+       x="AvgAnnCount", y = "Target death rate")+
+  theme_classic()  
+
+
+ggplot(cancer_data, aes(x=cancer_data$AvgHouseholdSize, 
+                                       y=cancer_data$TARGET_deathRate, 
+                        color=cancer_data$Geography)) + 
+  geom_point() + 
+  geom_smooth(method=lm, color="black")+
+  labs(title="AvgAnnCount vs. Target Death Rate",
+       x="AvgAnnCount", y = "Target death rate")+
+  theme_classic()  
+
+
+ggplot(cancer_data, aes(x=cancer_data$incidenceRate, 
+                                       y=cancer_data$TARGET_deathRate, 
+                        color=cancer_data$Geography)) + 
+  geom_point() + 
+  geom_smooth(method=lm, color="black")+
+  labs(title="AvgAnnCount vs. Target Death Rate",
+       x="AvgAnnCount", y = "Target death rate")+
+  theme_classic()  
+
+```
+
+## Creating Training and Validation datasets (70/30)
+
+```{r}
+set.seed(123)
+library(caret)
+
+
+train_index = createDataPartition(1:nrow(cancer_data_withDummies), p = .7, list = FALSE,  times = 1)
+
+cancer_data_withDummies$TARGET_deathRate <- cancer_data$TARGET_deathRate
+
+cancer_data_withDummies <- data.frame(cancer_data_withDummies)
+
+# scale features
+cancer_data_withDummies <- scale(cancer_data_withDummies[, 1:26], center = TRUE, scale = TRUE)
+
+cancer_data_train <- cancer_data_withDummies[train_index,]
+cancer_data_valid <- cancer_data_withDummies[-train_index,]
+
+cancer_data_train <- data.frame(cancer_data_train)
+cancer_data_valid < data.frame(cancer_data_valid)
+
+head(cancer_data_train, 5)
+
+#str(cancer_data_train)
+#str(cancer_data_valid)
+
+```
+
+## Selection criteria
+
+```{r}
+fit <- lm(TARGET_deathRate ~ ., data = cancer_data_train)
+
+step(fit, direction = "backward")
+
+```
+
+```{r}
+fit.forward <- lm(TARGET_deathRate ~ ., data = cancer_data_train)
+
+step(fit.forward, direction = "forward")
+
+```
+```{r}
+fit.both <- lm(TARGET_deathRate ~ ., data = cancer_data_train)
+
+step(fit.both, direction = "both")
+
+```
+
+## Model Fitting
+```{r}
+base.model = lm(TARGET_deathRate ~ incidenceRate, data = cancer_data_train)
+
+full.model = lm(TARGET_deathRate ~., data = cancer_data_train)
+
+summary(full.model)
+
+# anova
+anova(base.model, full.model)
+
+```
+
+## Model selection
+```{r}
+
+model.step = step(full.model, direction = "both")
+model.step
+
+summary(model.step)
+```
+
+### Residual Analysis
+```{r}
+plot( fitted(model.step), rstandard(model.step), 
+      xlab = "Predicted", ylab = "Residual", 
+      main="Predicted vs residuals plot for Stepwise selection model")
+     abline(a=0, b=0, col="red")
+
+```
+```{r}
+#applying log transformation to y-variable
+Ltdeathrate = log(cancer_data_train$TARGET_deathRate)
+
+LModel.stepF  = lm(Ltdeathrate ~., data = cancer_data_train[, -26])
+
+summary(LModel.stepF)
+
+plot(fitted(LModel.stepF), rstandard(LModel.stepF), 
+      xlab = "Predicted", 
+      ylab = "Residual", 
+      main="Predicted vs residuals plot for Stepwise selection model Log transform")
+      abline(a=0, b=0, col="red")
+
+
+```
+```{r}
+# log model
+par(mfrow = c(2, 2))
+plot(LModel.stepF)
+```
+```{r}
+# full  model
+par(mfrow = c(2, 2))
+plot(model.step)
+```
+
+
+
+```{r}
+Stdeathrate = sqrt(cancer_data_train$TARGET_deathRate)
+
+SModel.stepF = lm(Stdeathrate ~ ., data = cancer_data_train[, -26])
+
+summary(SModel.stepF)
+
+plot( fitted(SModel.stepF), rstandard(SModel.stepF),
+      xlab = "Predicted", 
+      ylab = "Residual", 
+      main="Predicted vs residuals plot for Stepwise selection model Sqrt transform")
+      abline(a=0, b=0, col="red")
+
+```
+### Plot residuals vs. predictors
+```{r}
+plot(cancer_data_train$incidenceRate, rstandard(model.step), 
+     xlab = "tincidencerate", 
+     ylab = "Residual", 
+     main="tincidencerate vs residuals plot")
+abline(a=0, b=0, col="red")
+
+
+plot(cancer_data_train$PctPublicCoverage, rstandard(model.step), 
+     xlab = "public coverage", 
+     ylab = "Residual", 
+     main="public coverage vs residuals plot")
+abline(a=0, b=0, col="red")
+
+plot(cancer_data_train$povertyPercent, rstandard(model.step), 
+     xlab = "poverty", 
+     ylab = "Residual", 
+     main="poverty vs residuals plot")
+abline(a=0, b=0, col="red")
+
+
+plot(cancer_data_train$BirthRate, rstandard(model.step), 
+     xlab = "birth rate", 
+     ylab = "Residual", 
+     main="birthrate vs residuals plot")
+abline(a=0, b=0, col="red")
+
+```
+### Outliers in the response variable
+```{r}
+
+ggplot(cancer_data, aes(x="",y=cancer_data$TARGET_deathRate)) + 
+  geom_boxplot()
+
+
+ggplot(data=cancer_data, aes(cancer_data$TARGET_deathRate)) + 
+  geom_histogram(fill="blue")+
+  labs(title="Histogram for ", x="Age", y="Count")
+
+
+ggplot(data=cancer_data, aes(cancer_data$incidenceRate)) + 
+  geom_histogram(fill="blue")+
+  labs(title="Histogram for ", x="Age", y="Count")
+
+
+ggplot(cancer_data, aes(x=avgAnnCount, y=TARGET_deathRate)) + 
+  geom_point()+ geom_smooth(method=lm,se=FALSE)
+
+
+```
+
+
+### QQPlot
+```{r}
+##QQ-plot
+qqnorm(rstandard(model.step))
+qqline(rstandard(model.step), col = 2)
+
+plot(model.step)
+
+```
+### Shapiro-Wilk Normality Test
+```{r}
+sha.model <- lm(cancer_data_train$TARGET_deathRate ~ ., data = cancer_data_train)
+
+shapiro.test(residuals(sha.model))
+
+```
+
+## Breusch Pagan Test - Constant Variance
+
+```{r}
+lmtest::bptest(sha.model)
+
+```
+
+
+### EDA
+```{r}
+
+GGally::ggpairs(cancer_data_train[,1:6],diag=list(continuous="blankDiag")) + theme(text=element_text(size=10))
+
+```
+### VIF
+```{r}
+car::vif(sha.model)
+
+```
+
+## LINEAR REGRESSION MODEL
+```{r}
+fit.model.ln = lm(cancer_data_train$TARGET_deathRate ~ ., data = cancer_data_train)
+
+summary(fit.model.ln)
+
+y = data.frame(cancer_data_valid)$TARGET_deathRate
+
+## make predictions
+predictions = predict(fit.model.ln, data.frame(cancer_data_valid[, -26]))
+
+
+valid.rmse = RMSE(predictions, y)
+valid.MSE <-  RMSE(predictions, y)**2
+
+data.frame(valid.rmse,  valid.MSE)
+
+```
+
+```{r}
+# shapiro
+shapiro.test(residuals(fit.model.ln))
+
+# Breusch-Pagan test
+lmtest::bptest(fit.model.ln)
+
+```
+```{r}
+
+cancer_data_train = data.frame(cancer_data_withDummies[train_index,])
+cancer_data_valid = data.frame(cancer_data_withDummies[-train_index,])
+
+
+
+x_train <- model.matrix(TARGET_deathRate ~., cancer_data_train)[,-1] #predictor variables
+y_train <- cancer_data_train$TARGET_deathRate # response variables
+
+x_test <- model.matrix(TARGET_deathRate ~., cancer_data_valid)[,-1]
+y_test <- cancer_data_valid$TARGET_deathRate
+
+```
+
+## RIDGE REGRESSION
+
+```{r}
+
+set.seed(110)    # seed for reproducibility
+library(glmnet)  # for ridge regression
+library(dplyr)   # for data cleaning
+library(caret)
+library(psych)
+
+# Perform 10-fold cross-validation to select lambda ---------------------------
+lambdas_to_try <- 10^seq(-5, 5, length.out = 100)
+
+# Setting alpha = 0 implements ridge regression
+ridge_cv <- cv.glmnet(x_train, y_train, 
+                      alpha = 0,
+                      type.measure = "mse",
+                      lambda = lambdas_to_try,
+                      standardize = FALSE, 
+                      nfolds = 10)
+# Plot cross-validation results
+plot(ridge_cv)
+
+# Best cross-validated lambda
+lambda_cv <- ridge_cv$lambda.min
+
+# Fit final model, get its sum of squared residuals and multiple R-squared
+model_cv <- glmnet(x_train, y_train, alpha = 0, lambda = lambda_cv, standardize = TRUE)
+# predict using minimum lambda
+y_hat_cv <- predict(model_cv, x_train)
+
+# CV-RMSE using minimum lambda
+cv.rmse = sqrt(ridge_cv$cvm[ridge_cv$lambda == ridge_cv$lambda.min])
+
+# Training Error
+train.rmse = RMSE(y_hat_cv, y_train)
+train.MSE <- RMSE(y_hat_cv, y_train)**2
+
+# Prediction on test.data
+y.pred <- predict(model_cv, x_test)
+valid.rmse = RMSE(y.pred, y_test)
+valid.MSE <-  RMSE(y.pred, y_test)**2
+
+data.frame(lambda_cv, train.rmse, valid.rmse,  train.MSE, valid.MSE, cv.rmse)
+
+# See how increasing lambda shrinks the coefficients --------------------------
+# Each line shows coefficients for one variables, for different lambdas.
+# The higher the lambda, the more the coefficients are shrinked towards zero.
+res <- glmnet(x_test, y_test, alpha = 0, lambda = lambdas_to_try, standardize = FALSE)
+
+plot(res,
+     xvar = "lambda",
+     #main = paste("Testing Error(MSE):", round(test.err, 3))
+     )
+
+legend("bottomright", lwd = 1, col = 1:6, legend = colnames(x_train), cex = .7)
+
+
+
+```
+## LASSO REGRESSION
+
+```{r}
+set.seed(100)
+
+# Perform 10-fold cross-validation to select lambda ---------------------------
+lambdas_to_try <- 10^seq(-3, 3, length.out = 100)
+
+# Setting alpha = 0 implements ridge regression
+fit_lasso_cv <- cv.glmnet(x_train, y_train, 
+                      alpha = 1,
+                      type.measure = "mse",
+                      lambda = lambdas_to_try,
+                      standardize = TRUE, 
+                      nfolds = 10)
+
+
+# Plot cross-validation results
+plot(fit_lasso_cv)
+
+# Best cross-validated lambda
+lambda_cv <- fit_lasso_cv$lambda.min
+
+# Fit final model, get its sum of squared residuals and multiple R-squared
+model_cv <- glmnet(x_train, y_train, alpha = 1, lambda = lambda_cv, standardize = TRUE)
+# predict using minimum lambda
+y_hat_cv <- predict(model_cv, x_train)
+
+# CV-RMSE using minimum lambda
+cv.rmse = sqrt(fit_lasso_cv$cvm[fit_lasso_cv$lambda == fit_lasso_cv$lambda.min])
+
+# Training Error
+train.rmse = RMSE(y_hat_cv, y_train)
+train.MSE <- RMSE(y_hat_cv, y_train)**2
+
+# Prediction on test.data
+y.pred <- predict(model_cv, x_test)
+valid.rmse = RMSE(y.pred, y_test)
+valid.MSE <-  RMSE(y.pred, y_test)**2
+
+data.frame(lambda_cv, train.rmse, valid.rmse,  train.MSE, valid.MSE, cv.rmse)
+
+# See how increasing lambda shrinks the coefficients --------------------------
+# Each line shows coefficients for one variables, for different lambdas.
+# The higher the lambda, the more the coefficients are shrinked towards zero.
+res <- glmnet(x_test, y_test, alpha = 1, lambda = lambdas_to_try, standardize = FALSE)
+
+plot(res, 
+     xvar = "lambda",
+     #main=paste("Testing Error(MSE):", round(valid.err,3))
+     )
+
+legend("bottomright", lwd = 1, col = 1:6, legend = colnames(x_train), cex = .7)
+
+```
+
+
+
+
+
+
+
+
+
+
